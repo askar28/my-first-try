@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Heart Particles Mobile Optimized - Mysterious Words</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            touch-action: none;
+        }
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 2; }
+        .word, .heart-bg {
+            position: absolute;
+            color: white;
+            font-size: 1.2em; /* Уменьшен размер шрифта */
+            transition: opacity 0.1s ease-in-out; /* Немного увеличен интервал для плавности */
+            pointer-events: none;
+            text-shadow: 0 0 3px rgba(255, 255, 255, 0.5); /* Уменьшена интенсивность тени */
+        }
+        .heart-bg {
+            font-size: 0.8em; /* Уменьшен размер сердечек */
+        }
+    </style>
+</head>
+<body>
+    <div id="hearts-bg-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;"></div>
+    <div id="words-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;"></div>
+    <canvas id="heartCanvas"></canvas>
+    <script>
+        const heartCanvas = document.getElementById('heartCanvas');
+        const heartCtx = heartCanvas ? heartCanvas.getContext('2d') : null;
+        const wordsContainer = document.getElementById('words-container');
+        const heartsBgContainer = document.getElementById('hearts-bg-container');
+        const baseWords = ["Шепот", "Тень", "Завеса", "Секрет", "Лабиринт", "Голос", "Эхо", "Иллюзия", "Предзнаменование", "Загадка"];
+        const words = [];
+        for (let i = 0; i < 30; i++) { // Уменьшено количество слов
+            words.push(baseWords[i % baseWords.length]);
+        }
+        const placedWords = [];
+        const placedHearts = [];
+        const wordProximityRadius = Math.round(120 * 0.6); // 72
+        const wordColors = ["#FF69B4", "#FFD700", "#ADFF2F", "#87CEEB", "#FFA07A"]; // Уменьшено количество цветов
+        const heartColors = ["#FFC0CB", "#DC143C", "#FF4500"]; // Уменьшено количество цветов
+
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        if (heartCanvas) {
+            heartCanvas.width = width;
+            heartCanvas.height = height;
+        }
+
+        let centerX = width / 2;
+        let centerY = height / 2;
+
+        const heartSize = Math.min(width, height) / 5; // Немного уменьшен размер сердца
+        const numParticles = Math.round(300 * 0.8); // Уменьшено количество частиц
+        const particleSpeedBase = 0.4; // Уменьшена скорость частиц
+        const beatCycleDurationBase = 80; // Немного увеличена длительность биения
+        let beatCycleDuration = beatCycleDurationBase;
+        let beatFrame = 0;
+        const particles = [];
+        const maxParticleDistance = Math.max(width, height) / 3; // Уменьшено максимальное расстояние
+        const minHeartScale = 0.7; // Немного уменьшен минимальный масштаб
+        const baseHue = 0;
+        const hueVariation = 360;
+        const turbulenceFactor = 0.001; // Уменьшен фактор турбулентности
+        const minParticleRadius = 2; // Уменьшен минимальный радиус
+        const maxParticleRadius = 4; // Уменьшен максимальный радиус
+        const attractToSilhouetteFactor = 0.01; // Уменьшен фактор притяжения
+        const settleDuration = 30; // Немного увеличена длительность оседания
+        const radialConstraintFactor = 0.998; // Немного усилено радиальное ограничение
+        const neonIntensityFactor = 1; // Уменьшена интенсивность неона
+        let mouseX = width / 2;
+        let mouseY = height / 2;
+        let interactionActive = false;
+        const flashlightRadius = Math.round(150 * 0.6); // 90
+        const collectionSpeed = 0.12; // Уменьшена скорость сбора
+        const explosionForce = 1.4; // Уменьшена сила взрыва
+        const bounceDamping = 0.7; // Уменьшено демпфирование отскока
+
+        function getRandom(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function placeWords() {
+            words.forEach(word => {
+                const x = getRandom(0, width);
+                const y = getRandom(0, height);
+                const span = document.createElement('span');
+                span.classList.add('word');
+                span.textContent = word;
+                span.style.left = `${x}px`;
+                span.style.top = `${y}px`;
+                span.style.fontSize = `${getRandom(1, 1.6)}em`; // Уменьшен диапазон размеров
+                span.style.color = wordColors[(Math.random() * wordColors.length) | 0];
+                wordsContainer.appendChild(span);
+                placedWords.push({ element: span, x: x, y: y });
+            });
+        }
+
+        function createBackgroundHearts() {
+            const numHearts = 40; // Уменьшено количество сердечек
+            for (let i = 0; i < numHearts; i++) {
+                const heart = document.createElement('div');
+                heart.classList.add('heart-bg');
+                heart.innerHTML = '💀';
+                const x = getRandom(0, width);
+                const y = getRandom(0, height);
+                const size = getRandom(0.6, 1) + 'em'; // Уменьшен диапазон размеров
+                heart.style.left = `${x}px`;
+                heart.style.top = `${y}px`;
+                heart.style.fontSize = size;
+                heart.style.color = heartColors[(Math.random() * heartColors.length) | 0];
+                heartsBgContainer.appendChild(heart);
+                placedHearts.push({ element: heart, x: x, y: y });
+            }
+        }
+
+        function getHeartPoint(t) {
+            const x = 16 * Math.sin(t) ** 3;
+            const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+            return { x: x, y: y };
+        }
+
+        for (let i = 0; i < numParticles; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const initialX = centerX + (Math.random() - 0.3) * width; // Уменьшен разброс
+            const initialY = centerY + (Math.random() - 0.3) * height; // Уменьшен разброс
+            const initialVx = (Math.random() - 0.5) * particleSpeedBase * 0.5;
+            const initialVy = (Math.random() - 0.5) * particleSpeedBase * 0.5;
+            particles.push({
+                x: initialX,
+                y: initialY,
+                vx: initialVx,
+                vy: initialVy,
+                radius: Math.random() * (maxParticleRadius - minParticleRadius) + minParticleRadius,
+                baseRadius: Math.random() * (maxParticleRadius - minParticleRadius) + minParticleRadius,
+                hue: baseHue + Math.random() * hueVariation,
+                targetX: centerX + getHeartPoint(angle).x * heartSize / 20,
+                targetY: centerY + getHeartPoint(angle).y * heartSize / 20,
+                angle: angle,
+                attracted: false
+            });
+        }
+
+        function animate() {
+            if (heartCtx) heartCtx.clearRect(0, 0, width, height);
+
+            const beatProgress = 0.5;
+            const currentHeartScale = minHeartScale;
+
+            const allInteractiveElements = [...placedWords, ...placedHearts];
+
+            allInteractiveElements.forEach(itemData => {
+                let isNear = false;
+                if (interactionActive) {
+                    const distanceToCenter = Math.sqrt((mouseX - itemData.x) ** 2 + (mouseY - itemData.y) ** 2);
+                    if (distanceToCenter < flashlightRadius) {
+                        itemData.element.style.opacity = 0.8; // Немного уменьшена видимость при наведении
+                        isNear = true;
+                    }
+                }
+                if (!isNear) {
+                    itemData.element.style.opacity = 0.00625; // Еще больше уменьшена базовая видимость
+                }
+            });
+
+            particles.forEach(particle => {
+                if (interactionActive) {
+                    particle.vx = (mouseX - particle.x) * 0.06; // Уменьшена скорость реакции
+                    particle.vy = (mouseY - particle.y) * 0.06; // Уменьшена скорость реакции
+                } else {
+                    const dx = particle.targetX - particle.x;
+                    const dy = particle.targetY - particle.y;
+                    const distanceToTarget = Math.sqrt(dx * dx + dy * dy);
+                    particle.vx += dx * attractToSilhouetteFactor / (distanceToTarget + 30);
+                    particle.vy += dy * attractToSilhouetteFactor / (distanceToTarget + 30);
+
+                    const currentAngle = Math.atan2(particle.y - centerY, particle.x - centerX);
+                    const targetAngle = Math.atan2(particle.targetY - centerY, particle.targetX - centerX);
+                    const deltaAngle = targetAngle - currentAngle;
+                    particle.vx -= Math.sin(targetAngle) * deltaAngle * 0.015; // Уменьшено влияние угла
+                    particle.vy += Math.cos(targetAngle) * deltaAngle * 0.015; // Уменьшено влияние угла
+                }
+
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+
+                if (particle.x + particle.radius > width) {
+                    particle.x = width - particle.radius;
+                    particle.vx *= -bounceDamping;
+                }
+                if (particle.x - particle.radius < 0) {
+                    particle.x = particle.radius;
+                    particle.vx *= -bounceDamping;
+                }
+                if (particle.y + particle.radius > height) {
+                    particle.y = height - particle.radius;
+                    particle.vy *= -bounceDamping;
+                }
+                if (particle.y - particle.radius < 0) {
+                    particle.y = particle.radius;
+                    particle.vy *= -bounceDamping;
+                }
+
+                if (heartCtx) {
+                    const opacity = 0.8; // Немного уменьшена общая прозрачность частиц
+                    const color = `hsla(${particle.hue % 360}, 100%, 70%, ${opacity})`;
+                    heartCtx.fillStyle = color;
+                    heartCtx.shadowColor = `hsla(${particle.hue % 360}, 100%, 70%, ${opacity * neonIntensityFactor})`;
+                    heartCtx.shadowBlur = particle.radius * neonIntensityFactor;
+                    heartCtx.beginPath();
+                    heartCtx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+                    heartCtx.fill();
+                }
+                particle.hue += 1;
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        function handleInteractionStart(event) {
+            interactionActive = true;
+            if (event.touches) {
+                mouseX = event.touches[0].clientX;
+                mouseY = event.touches[0].clientY;
+            } else {
+                mouseX = event.clientX;
+                mouseY = event.clientY;
+            }
+        }
+
+        function handleInteractionMove(event) {
+            if (interactionActive) {
+                mouseX = event.touches ? event.touches[0].clientX : event.clientX;
+                mouseY = event.touches ? event.touches[0].clientY : event.clientY;
+            }
+        }
+
+        function handleInteractionEnd() {
+            interactionActive = false;
+        }
+
+        if (heartCanvas) {
+            heartCanvas.addEventListener('mousedown', handleInteractionStart);
+            heartCanvas.addEventListener('touchstart', handleInteractionStart);
+            heartCanvas.addEventListener('mousemove', handleInteractionMove);
+            heartCanvas.addEventListener('touchmove', handleInteractionMove);
+            heartCanvas.addEventListener('mouseup', handleInteractionEnd);
+            heartCanvas.addEventListener('touchend', handleInteractionEnd);
+            heartCanvas.addEventListener('touchcancel', handleInteractionEnd);
+        }
+
+        window.addEventListener('resize', () => {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+            if (heartCanvas) {
+                heartCanvas.width = width;
+                heartCanvas.height = height;
+            }
+        });
+
+        placeWords();
+        createBackgroundHearts();
+        animate();
+    </script>
+</body>
+</html>
